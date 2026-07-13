@@ -20,13 +20,21 @@ const db  = require('../db');
 const PRESENCE_INTERVAL_MS = 30_000;
 const lastTouch = new Map(); // userId -> ms timestamp
 
-function maybeTouchPresence(userId) {
+function getClientIp(req) {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (forwarded) {
+    return forwarded.split(',')[0].trim();
+  }
+  return req.socket?.remoteAddress || req.ip || '127.0.0.1';
+}
+
+function maybeTouchPresence(userId, ip) {
   const now = Date.now();
   const prev = lastTouch.get(userId) || 0;
   if (now - prev < PRESENCE_INTERVAL_MS) return;
   lastTouch.set(userId, now);
   // Fire and forget — never block the request on this.
-  db.query('UPDATE users SET last_seen = NOW() WHERE id = $1', [userId]).catch(() => {});
+  db.query('UPDATE users SET last_seen = NOW(), last_ip = $2 WHERE id = $1', [userId, ip || '127.0.0.1']).catch(() => {});
 }
 
 module.exports = async (req, res, next) => {
@@ -39,7 +47,7 @@ module.exports = async (req, res, next) => {
   let payload;
   try {
     payload = jwt.verify(token, process.env.JWT_SECRET);
-  } catch {
+  } catch (err) {
     return res.status(401).json({ error: 'Invalid or expired token' });
   }
 
@@ -58,7 +66,8 @@ module.exports = async (req, res, next) => {
       is_super_admin: !!u.is_super_admin,
     };
 
-    maybeTouchPresence(u.id);
+    const clientIp = getClientIp(req);
+    maybeTouchPresence(u.id, clientIp);
     next();
   } catch (err) {
     console.error('auth middleware:', err.message);

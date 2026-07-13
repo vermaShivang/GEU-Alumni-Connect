@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS users (
   is_admin              BOOLEAN     NOT NULL DEFAULT FALSE,
   is_super_admin        BOOLEAN     NOT NULL DEFAULT FALSE,
   must_change_password  BOOLEAN     NOT NULL DEFAULT FALSE,
+  last_seen             TIMESTAMP   DEFAULT NOW(),
+  last_ip               VARCHAR(45),
   created_at            TIMESTAMP   NOT NULL DEFAULT NOW()
 );
 

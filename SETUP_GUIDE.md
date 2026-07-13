@@ -1,65 +1,66 @@
-# GEU Alumni Connect — Setup Guide
+# GEU Alumni Connect — Complete Setup, Execution & Operational Guide
 
-This iteration adds an admin-approved signup flow, email-driven password
-changes, a job board, community announcement-style posts and role
-management, and several other improvements over the original codebase.
+This document provides step-by-step instructions for installing, configuring, testing, and executing the **GEU Alumni Connect** platform from scratch.
 
 ---
 
-## Prerequisites
+## Prerequisites & System Requirements
 
-| Tool | Version |
-|------|---------|
-| Node.js    | 18+ |
-| PostgreSQL | 14+ |
-| npm        | comes with Node |
+Before starting, ensure your system has the following installed:
 
-(SMTP is optional — see Step 4. Without it, emails are logged to the server
-console and the app remains fully usable for development.)
+| Component | Version | Purpose |
+| :--- | :--- | :--- |
+| **Node.js** | v18.0.0 or higher | Runtime for backend Express server & frontend Vite builder |
+| **PostgreSQL**| v14.0 or higher | Primary relational database |
+| **npm** | v9.0+ (bundled with Node) | Package and script manager |
+| **Git** | Any modern version | Source control |
 
 ---
 
-## Step 1 — Database
+## Step 1: Database Initialization & Migrations
 
-Open a terminal and create the database:
-
+### 1.1 Create the PostgreSQL Database
+Open your terminal or command prompt and run:
 ```bash
 psql -U postgres -c "CREATE DATABASE geu_alumni;"
 ```
 
-### A) Brand-new database
+### 1.2 Initialize Schema
+- **For a fresh database installation**, load the full schema:
+  ```bash
+  psql -U postgres -d geu_alumni -f schema.sql
+  ```
+- **For upgrading an existing database deployment**, execute the idempotent migration file:
+  ```bash
+  psql -U postgres -d geu_alumni -f migrations.sql
+  ```
 
+### 1.3 Create or Promote the First Super-Admin
+
+Because administrators approve new signups and manage roles, you need an initial super-admin account. You can create one instantly using either our CLI utility or SQL:
+
+#### Option A: One-Command CLI Utility (Recommended)
+Navigate to the `backend/` directory and run our automated admin creation script:
 ```bash
-psql -U postgres -d geu_alumni -f schema.sql
+cd backend
+node scripts/create-admin.js admin@geu.ac.in admin Admin@12345 "System Super Admin"
 ```
+This script automatically inserts or elevates the account to `is_admin = true` and `is_super_admin = true` with fully hashed credentials.
 
-You'll see a series of `CREATE TABLE` messages — your DB is ready.
-
-### B) Upgrading an existing database (older codebase)
-
-```bash
-psql -U postgres -d geu_alumni -f migrations.sql
-```
-
-The migration is idempotent — safe to run more than once. It backfills
-`username` for existing users from their email local-part, adds the new
-admin/OTP/jobs/community-posts tables, and is otherwise non-destructive.
-
-### Promote the first super-admin
-
-The very first super-admin must be promoted by hand because the admin panel
-is the only place to mint other admins. Run **either** of these once:
-
-**If you're using a fresh DB and have no users yet** — register through the
-UI first (your application will sit in `pending_registrations`), then
-hand-approve yourself with SQL:
+#### Option B: Manual SQL Promotion
+1. First, register through the frontend UI (`http://localhost:8080/signup`) so your application is inserted into `pending_registrations`.
+2. Execute the following SQL query to approve the first registration and make that user a super-admin:
 
 ```sql
--- Approve the first signup and seed an admin
+-- Create extension if needed for password generation
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Approve the first pending signup and make them super-admin
 WITH ins AS (
   INSERT INTO users (id, email, username, password_hash, is_admin, is_super_admin, must_change_password)
   SELECT uuid_generate_v4(), email, split_part(email, '@', 1),
-         crypt('TempAdmin!23', gen_salt('bf')),  -- requires pgcrypto extension
+         crypt('AdminSecret!123', gen_salt('bf')),
          TRUE, TRUE, TRUE
     FROM pending_registrations
    WHERE status = 'pending'
@@ -75,172 +76,177 @@ UPDATE pending_registrations SET status = 'approved'
               WHERE status = 'pending' ORDER BY created_at LIMIT 1);
 ```
 
-(If you don't want to bother with `pgcrypto`, the simpler approach is to
-register a normal user, **then** flip the admin bits on that row.)
-
-**If you already had users from the previous codebase**, just promote one
-of them to super-admin:
-
-```sql
-UPDATE users
-   SET is_admin = TRUE, is_super_admin = TRUE
- WHERE email = 'your-admin@geu.ac.in';
-```
-
-That super-admin can then promote others via the Admin Dashboard UI (no
-more SQL required).
+Once logged in as super-admin (`admin` / `Admin@12345`), you can promote other users directly from the **Admin Dashboard UI** (`/admin`).
 
 ---
 
-## Step 2 — Backend
+## Step 2: Backend Configuration & Execution
 
+### 2.1 Install Dependencies
+Navigate to the `backend/` directory and install required Node packages:
 ```bash
 cd backend
 npm install
+```
+
+### 2.2 Environment Configuration (`.env`)
+Copy the template environment file:
+```bash
 cp .env.example .env
 ```
 
-Edit `backend/.env`:
+Edit `backend/.env` with the following variables:
 
-```
-DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@localhost:5432/geu_alumni
-JWT_SECRET=pick_any_long_random_string_here
-PORT=3001
-BASE_URL=http://localhost:3001
-FRONTEND_URL=http://localhost:8080
-```
+| Variable | Example Value | Description |
+| :--- | :--- | :--- |
+| `PORT` | `3001` | Port where Express API listens |
+| `DATABASE_URL` | `postgresql://user:pass@ep-xxx.neon.tech/neondb?sslmode=require` | Connection URI for NeonDB Cloud or Local PostgreSQL |
+| `JWT_SECRET` | `long_cryptographic_random_string` | Secret key for signing auth tokens |
+| `BASE_URL` | `http://localhost:3001` | Backend public URL |
+| `FRONTEND_URL` | `http://localhost:8080` | CORS allowed origin for frontend |
+| `CLOUDINARY_CLOUD_NAME` | `dcrv1lp8u` | Your Cloudinary cloud name for file uploads |
+| `CLOUDINARY_API_KEY` | `your_cloudinary_api_key` | Cloudinary API Key |
+| `CLOUDINARY_API_SECRET` | `your_cloudinary_api_secret` | Cloudinary API Secret |
+| `SMTP_HOST` | `smtp.gmail.com` *(Optional)* | Mail host server |
+| `SMTP_PORT` | `587` *(Optional)* | SMTP mail port |
+| `SMTP_USER` | `alumni.geu@gmail.com` *(Optional)* | Email address for notifications |
+| `SMTP_PASS` | `app_specific_password` *(Optional)* | Gmail App Password |
 
-Generate a JWT secret in one line:
+> **Generate a secure `JWT_SECRET` quickly**:
+> ```bash
+> node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+> ```
 
+### 2.3 Start Backend Server
 ```bash
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+npm run dev
 ```
-
-Start the backend:
-
-```bash
-npm run dev      # auto-restart
-# or:
-npm start
-```
-
-You'll see:
-
+You should see:
 ```
 ✅ GEU Alumni backend running at http://localhost:3001
    ✉  SMTP not configured — emails will be logged to console.
 ```
 
-The "✉ SMTP not configured" line goes away once you fill in SMTP creds.
-
 ---
 
-## Step 3 — Frontend
+## Step 3: Frontend Configuration & Execution
 
+Open a **new terminal window** and navigate to the `Frontend/` directory:
+
+### 3.1 Install Dependencies
 ```bash
 cd Frontend
 npm install
+```
+
+### 3.2 Environment Configuration (`.env`)
+Create a `.env` file in `Frontend/` pointing to your backend API:
+```bash
 echo "VITE_API_URL=http://localhost:3001" > .env
+```
+
+### 3.3 Start Frontend Development Server
+```bash
 npm run dev
 ```
-
-App is at **http://localhost:8080**.
+Open your browser to **http://localhost:8080**.
 
 ---
 
-## Step 4 — Email (optional but recommended)
+## Step 4: Verification via Automated Test Suite
 
-Approval credentials and OTPs are sent over email. **Without SMTP they are
-logged to the backend console** — fine for local development, but not for
-real users.
+Before deploying or running end-to-end user workflows, verify that both frontend and backend pass all automated tests.
 
-For Gmail, generate an [App Password](https://myaccount.google.com/apppasswords)
-(requires 2FA on the account) and fill in `backend/.env`:
+### 4.1 Run Backend Tests
+From the `backend/` directory:
+```bash
+npm test
+```
+**Expected Result**: All 9 Jest test suites pass (34 unit & route tests).
+
+### 4.2 Run Frontend Tests
+From the `Frontend/` directory:
+```bash
+npm test
+```
+**Expected Result**: All 5 Vitest suites pass (10 component & API tests).
+
+---
+
+## Step 5: Email Setup (SMTP vs. Development Console Mode)
+
+### Development Console Mode (Default)
+When `SMTP_USER` is not defined in `backend/.env`, the email service operates in **Console Mode**. All approval emails, temporary credentials, and OTP verification codes are cleanly printed to your backend terminal stdout formatted as follows:
 
 ```
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_SECURE=false
-SMTP_USER=your_address@gmail.com
-SMTP_PASS=your_app_password
-EMAIL_FROM="GEU Alumni Connect <your_address@gmail.com>"
+──────── [EMAIL — console fallback] ────────
+To:       student@geu.ac.in
+Subject:  GEU Alumni Connect — Your verification code: 482910
+--------
+Hi student,
+Use the code below to change your password. It is valid for 10 minutes.
+   482910
+────────────────────────────────────────────
 ```
 
-Restart the backend after editing `.env`.
+### Production Gmail SMTP Configuration
+To send live emails:
+1. Enable **2-Step Verification** on your Google Account.
+2. Generate an **App Password** via [Google Account Security](https://myaccount.google.com/apppasswords).
+3. Set `SMTP_HOST=smtp.gmail.com`, `SMTP_USER=your@gmail.com`, and `SMTP_PASS=your_app_password` in `backend/.env`.
+4. Restart the backend server.
 
 ---
 
-## How the new flows work
+## Step 6: End-to-End System Execution & Verification Walkthrough
 
-**Signup (`/signup`)** is now an *application*, not a direct registration.
-Users provide name, email, course, graduation year, student id, optional
-reason, and a verification document (PDF / PNG / JPG / WEBP, ≤ 10 MB). The
-form posts to `pending_registrations`. The user cannot log in yet.
-
-**Admin approval (`/dashboard/admin`)** — visible to admins only. The admin
-opens "Sign-up Approvals", reviews the verification doc (one-click open),
-and either:
-- **Approves** — backend auto-generates a username (from the full name)
-  and a 12-character random password, creates the user, sets
-  `must_change_password = TRUE`, and emails the credentials.
-- **Rejects** — admin can include a reason; user gets an email and the row
-  is marked rejected. The user can re-submit with a new document.
-
-**First login** — new users sign in with the emailed username (or their
-email) + temp password. They are routed straight to `/dashboard/change-password`
-because of the `must_change_password` flag.
-
-**Change-password / OTP** — two-step:
-1. User confirms their current password → backend emails a 6-digit OTP
-   (10 minute TTL, max 5 attempts).
-2. User enters OTP + new password (≥ 8 chars) → password is updated.
-
-**User management (admin)** — search by name/username/email, promote or
-demote users (super-admin only), trigger password reset (re-emails a new
-temp password and forces another change), or delete a user (super-admin
-only). The super-admin row itself is protected from accidental
-deletion / demotion.
-
-**Resumes** — `GET /api/resumes` now returns *only* resumes from the
-current user's accepted connections.
-
-**Comments on feed posts** — `GET /api/posts/:id/comments` returns the
-list (with author profile data); the PostCard fetches them when you open
-the comment section, displays them, lets the author or any admin delete
-them.
-
-**Job board (`/dashboard/jobs`)** — any logged-in user can post; only the
-poster (or an admin) can edit/delete. Search by keyword, filter by type,
-toggle "My Postings".
-
-**Communities** — three tabs once you're a member:
-- *Posts* — admin/moderator-authored announcements with optional title
-  and image; everyone can like/comment, admins can pin or delete any post.
-- *Chat* — unchanged behaviour; admin can disable globally or mute
-  individual members.
-- *Members* — admin can change roles (admin / moderator / member),
-  mute/unmute, or remove members. Last-admin self-demote is blocked at
-  both API and UI level.
+1. **Automated Unit & Integration Verification**:
+   - Run backend test suite (36 tests verifying auth, admin analytics, health report, jobs, communities):
+     ```bash
+     cd backend && npm test
+     ```
+   - Run frontend component test suite (10 tests):
+     ```bash
+     cd Frontend && npm test
+     ```
+2. **New User Application**:
+   - Navigate to `http://localhost:8080/signup`.
+   - Fill in full name, graduation year, student ID, and upload a document.
+3. **Admin Review & Approval**:
+   - Log into `http://localhost:8080/login` with your Super-Admin account (`admin` / `Admin@12345`).
+   - Open `/admin` → **Sign-up Approvals**.
+   - Click **Approve**. The system generates a username and temporary password and delivers them via email/console.
+4. **Platform Analytics & Interactive Visualizations**:
+   - Open `/admin` → **Platform Analytics** tab.
+   - Inspect the interactive **Graduation Batches Bar Chart** and **Academic Programs Donut Chart** (powered by Recharts). Click **Refresh Analytics** to see the animated live refresh indicator.
+5. **Real-Time System Diagnostics & IP Audit Log**:
+   - Open `/admin` → **System & API Health** tab.
+   - Click **Run Health Check** to test live database latency, heap memory usage, 7 API microservices latency status, and inspect the real-time **User Activity Audit Log** featuring online pulsing indicators and captured client **IP Addresses**.
+6. **First Login & OTP Password Change**:
+   - Log in using the newly emailed username + temporary password.
+   - The user is routed to `/dashboard/change-password`.
+   - Enter current password → receive 6-digit OTP → verify OTP and enter new permanent password.
+7. **Alumni Features**:
+   - Explore **Job Board** (`/dashboard/jobs`) to post or search jobs.
+   - Join **Communities** (`/dashboard/communities`) to view announcements and participate in discussions.
+   - Connect with alumni (`/dashboard/network`) to view connection-gated resumes.
 
 ---
 
-## Troubleshooting
+## Troubleshooting & Frequently Asked Questions
 
-**"Connection refused" on API calls** — Make sure backend is running on
-port 3001 and `Frontend/.env` has `VITE_API_URL=http://localhost:3001`.
+### Q1: `password authentication failed for user postgres`
+- Verify that `DATABASE_URL` in `backend/.env` contains your correct PostgreSQL password: `postgresql://postgres:YOUR_PASSWORD@localhost:5432/geu_alumni`.
 
-**"password authentication failed for user postgres"** — Wrong password
-in `backend/.env`'s `DATABASE_URL`.
+### Q2: CORS error or `Connection refused` when Frontend calls API
+- Ensure `backend/` is running on port `3001`.
+- Verify `Frontend/.env` has `VITE_API_URL=http://localhost:3001`.
 
-**Approval emails aren't arriving** — Check the backend console; if it
-shows the email there, SMTP is not configured. Fill in SMTP_USER/PASS.
+### Q3: `ERROR: extension "uuid-ossp" does not exist`
+- Connect to PostgreSQL as superuser and execute:
+  ```sql
+  CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+  ```
 
-**OTP "expired" right away** — Server clock skew. The OTP expires 10
-minutes after issue based on `NOW()` server time.
-
-**`extension "uuid-ossp" does not exist`** — Run `CREATE EXTENSION
-"uuid-ossp";` in your DB as a superuser.
-
-**`pgcrypto` errors when seeding super-admin via SQL** — install it with
-`CREATE EXTENSION pgcrypto;` first, or use the simpler "register, then
-flip the bits" approach instead.
+### Q4: OTP expired immediately
+- Ensure server time is synchronized (`NOW()` in PostgreSQL matches your server system clock). OTP tokens have a 10-minute TTL.

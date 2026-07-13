@@ -1,6 +1,13 @@
 // src/lib/api.ts — Centralized API client
 
-const BASE = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3001';
+function resolveBaseUrl(): string {
+  if (typeof window !== 'undefined' && ['localhost', '127.0.0.1'].includes(window.location.hostname)) {
+    return 'http://localhost:3001';
+  }
+  return (import.meta as any).env?.VITE_API_URL || 'http://localhost:3001';
+}
+
+const BASE = resolveBaseUrl();
 
 // ─── Token storage ──────────────────────────────────────────────────────────
 function getToken(): string | null { return localStorage.getItem('geu_token'); }
@@ -165,6 +172,60 @@ export interface AdminStats {
   open_jobs: number;
   total_communities: number;
 }
+export interface ComprehensiveAnalytics {
+  summary: {
+    total_users: number;
+    pending_signups: number;
+    total_posts: number;
+    open_jobs: number;
+    total_communities: number;
+    admin_count: number;
+    active_users_24h: number;
+    total_resumes: number;
+  };
+  graduation_years: { year: number; count: number }[];
+  top_courses: { course: string; count: number }[];
+  job_types: { job_type: string; count: number }[];
+  registration_status: { pending: number; approved: number; rejected: number };
+}
+export interface SystemHealthReport {
+  system_health: {
+    status: string;
+    timestamp: string;
+    db_latency_ms: number;
+    uptime_seconds: number;
+    memory_usage: {
+      rss_mb: number;
+      heap_used_mb: number;
+      heap_total_mb: number;
+    };
+    environment: {
+      node_version: string;
+      env: string;
+      email_delivery_mode: string;
+    };
+  };
+  api_endpoints_status: {
+    name: string;
+    status: string;
+    latency_ms: number;
+  }[];
+  user_activity_log: {
+    id: string;
+    email: string;
+    username: string;
+    full_name: string;
+    headline: string;
+    graduation_year: number | null;
+    course: string;
+    is_admin: boolean;
+    is_super_admin: boolean;
+    is_online: boolean;
+    ip_address: string;
+    last_seen: string | null;
+    created_at: string;
+  }[];
+}
 export interface CommunityPost {
   id: string;
   community_id: string;
@@ -297,6 +358,8 @@ export const jobsApi = {
 // ─── Admin ──────────────────────────────────────────────────────────────────
 export const adminApi = {
   stats: () => request<AdminStats>('/api/admin/stats'),
+  analytics: () => request<ComprehensiveAnalytics>('/api/admin/analytics'),
+  healthReport: () => request<SystemHealthReport>('/api/admin/health-report'),
   pending: (status: 'pending' | 'approved' | 'rejected' = 'pending') =>
     request<PendingRegistration[]>(`/api/admin/pending?status=${status}`),
   approve: (id: string) =>

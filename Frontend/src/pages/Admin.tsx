@@ -6,12 +6,28 @@ import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import {
   Shield, Users, FileText, Briefcase, Clock, ExternalLink,
   Check, X, Search, Trash2, KeyRound, ShieldCheck, ShieldOff, Mail,
-  GraduationCap, IdCard, AlertTriangle, BadgeCheck,
+  GraduationCap, IdCard, AlertTriangle, BadgeCheck, BarChart3,
+  Activity, Server, Database, Cpu, RefreshCw, TrendingUp, UserCheck,
+  PieChart as PieIcon, Zap, CheckCircle2, Wifi,
 } from "lucide-react";
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  PieChart,
+  Pie,
+  Cell,
+  CartesianGrid,
+} from "recharts";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 
-type Tab = "pending" | "users" | "moderation";
+type Tab = "pending" | "users" | "analytics" | "health";
+
+const CHART_COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899", "#06b6d4"];
 
 const Admin = () => {
   const { user } = useAuth();
@@ -21,6 +37,8 @@ const Admin = () => {
   const [search, setSearch] = useState("");
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState("");
+  const [isRefreshingAnalytics, setIsRefreshingAnalytics] = useState(false);
+  const [isRefreshingHealth, setIsRefreshingHealth] = useState(false);
 
   // ─── Stats ──────────────────────────────────────────────
   const { data: stats } = useQuery({
@@ -43,10 +61,54 @@ const Admin = () => {
     enabled: tab === "users",
   });
 
+  const [activitySearch, setActivitySearch] = useState("");
+
+  // ─── Analytics ──────────────────────────────────────────
+  const { data: analytics, isLoading: loadingAnalytics, refetch: refetchAnalytics } = useQuery({
+    queryKey: ["admin-analytics"],
+    queryFn: () => adminApi.analytics(),
+    enabled: tab === "analytics",
+    refetchInterval: 30_000,
+  });
+
+  // ─── Health Report & Activity ───────────────────────────
+  const { data: healthReport, isLoading: loadingHealth, refetch: refetchHealth } = useQuery({
+    queryKey: ["admin-health"],
+    queryFn: () => adminApi.healthReport(),
+    enabled: tab === "health",
+    refetchInterval: 15_000,
+  });
+
+  const handleRefreshAnalytics = async () => {
+    setIsRefreshingAnalytics(true);
+    try {
+      await refetchAnalytics();
+      toast.success("Analytics data refreshed successfully");
+    } catch (err) {
+      toast.error("Failed to refresh analytics");
+    } finally {
+      setTimeout(() => setIsRefreshingAnalytics(false), 500);
+    }
+  };
+
+  const handleRefreshHealth = async () => {
+    setIsRefreshingHealth(true);
+    try {
+      await refetchHealth();
+      toast.success("Live system health diagnostics completed");
+    } catch (err) {
+      toast.error("Failed to run health diagnostics");
+    } finally {
+      setTimeout(() => setIsRefreshingHealth(false), 500);
+    }
+  };
+
   const refreshAll = () => {
     queryClient.invalidateQueries({ queryKey: ["admin-stats"] });
     queryClient.invalidateQueries({ queryKey: ["admin-pending"] });
     queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+    queryClient.invalidateQueries({ queryKey: ["admin-analytics"] });
+    queryClient.invalidateQueries({ queryKey: ["admin-health"] });
   };
 
   const approve = async (id: string) => {
@@ -141,15 +203,18 @@ const Admin = () => {
         </div>
 
         {/* ── Tabs ─────────────────────────────────────── */}
-        <div className="flex gap-1 border-b border-border mb-4">
+        <div className="flex gap-1 border-b border-border mb-6 overflow-x-auto">
           {[
-            { k: "pending" as const, label: "Sign-up Approvals" },
-            { k: "users" as const, label: "Users" },
+            { k: "pending" as const, label: "Sign-up Approvals", icon: Clock },
+            { k: "users" as const, label: "Users Directory", icon: Users },
+            { k: "analytics" as const, label: "Platform Analytics", icon: BarChart3 },
+            { k: "health" as const, label: "System & API Health", icon: Activity },
           ].map((t) => (
             <button key={t.k} onClick={() => setTab(t.k)}
-              className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-[2px] transition-colors ${
+              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-[2px] whitespace-nowrap transition-colors ${
                 tab === t.k ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
               }`}>
+              <t.icon className="w-4 h-4" />
               {t.label}
             </button>
           ))}
@@ -320,6 +385,389 @@ const Admin = () => {
               </div>
             )}
           </>
+        )}
+
+        {/* ── Analytics Tab ────────────────────────────── */}
+        {tab === "analytics" && (
+          <div className="space-y-6 animate-fade-up">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-heading font-bold text-xl text-foreground">Platform Intelligence & Analytics</h3>
+                <p className="text-xs text-muted-foreground">Comprehensive insights into alumni engagement, distribution, and growth</p>
+              </div>
+              <button
+                onClick={handleRefreshAnalytics}
+                disabled={isRefreshingAnalytics || loadingAnalytics}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold border border-border bg-card hover:bg-muted/60 transition-all shadow-sm active:scale-95"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 text-primary ${isRefreshingAnalytics ? "animate-spin" : ""}`} />
+                {isRefreshingAnalytics ? "Refreshing Data..." : "Refresh Analytics"}
+              </button>
+            </div>
+
+            {loadingAnalytics ? (
+              <div className="glass-card rounded-2xl p-12 text-center text-sm text-muted-foreground">
+                Loading analytics data...
+              </div>
+            ) : !analytics ? (
+              <div className="glass-card rounded-2xl p-12 text-center text-sm text-muted-foreground">
+                No analytics data available right now.
+              </div>
+            ) : (
+              <>
+                {/* Executive KPI Grid */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="glass-card rounded-2xl p-5 border-l-4 border-l-primary">
+                    <p className="text-xs font-medium text-muted-foreground">Verified Alumni Users</p>
+                    <p className="font-heading font-bold text-3xl text-foreground mt-1.5">{analytics.summary.total_users}</p>
+                    <div className="flex items-center gap-1.5 mt-2 text-xs text-emerald-600">
+                      <TrendingUp className="w-3.5 h-3.5" /> Approved Accounts
+                    </div>
+                  </div>
+
+                  <div className="glass-card rounded-2xl p-5 border-l-4 border-l-amber-500">
+                    <p className="text-xs font-medium text-muted-foreground">Pending Review Queue</p>
+                    <p className="font-heading font-bold text-3xl text-foreground mt-1.5">{analytics.summary.pending_signups}</p>
+                    <div className="flex items-center gap-1.5 mt-2 text-xs text-amber-600">
+                      <Clock className="w-3.5 h-3.5" /> Requires Action
+                    </div>
+                  </div>
+
+                  <div className="glass-card rounded-2xl p-5 border-l-4 border-l-emerald-500">
+                    <p className="text-xs font-medium text-muted-foreground">Active Users (24h)</p>
+                    <p className="font-heading font-bold text-3xl text-foreground mt-1.5">{analytics.summary.active_users_24h}</p>
+                    <div className="flex items-center gap-1.5 mt-2 text-xs text-emerald-600">
+                      <UserCheck className="w-3.5 h-3.5" /> Recent Online Activity
+                    </div>
+                  </div>
+
+                  <div className="glass-card rounded-2xl p-5 border-l-4 border-l-secondary">
+                    <p className="text-xs font-medium text-muted-foreground">Uploaded Resumes</p>
+                    <p className="font-heading font-bold text-3xl text-foreground mt-1.5">{analytics.summary.total_resumes}</p>
+                    <div className="flex items-center gap-1.5 mt-2 text-xs text-secondary">
+                      <IdCard className="w-3.5 h-3.5" /> Searchable Profiles
+                    </div>
+                  </div>
+                </div>
+
+                {/* Interactive Visual Charts Section */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Graduation Batches Bar Chart */}
+                  <div className="glass-card rounded-2xl p-6">
+                    <h4 className="font-heading font-semibold text-foreground flex items-center gap-2 mb-4">
+                      <GraduationCap className="w-5 h-5 text-primary" /> Graduation Batches Chart
+                    </h4>
+                    {analytics.graduation_years.length === 0 ? (
+                      <p className="text-xs text-muted-foreground py-12 text-center">No graduation year data recorded yet.</p>
+                    ) : (
+                      <div className="h-[260px] w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={analytics.graduation_years} margin={{ top: 10, right: 15, left: -20, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#88888820" />
+                            <XAxis dataKey="year" tick={{ fontSize: 11 }} />
+                            <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                            <Tooltip
+                              contentStyle={{ backgroundColor: "rgba(15, 23, 42, 0.9)", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.1)", fontSize: "12px", color: "#fff" }}
+                              formatter={(value: any) => [`${value} Alumni`, "Count"]}
+                            />
+                            <Bar dataKey="count" fill="#3b82f6" radius={[6, 6, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Academic Programs Donut Chart */}
+                  <div className="glass-card rounded-2xl p-6">
+                    <h4 className="font-heading font-semibold text-foreground flex items-center gap-2 mb-4">
+                      <PieIcon className="w-5 h-5 text-secondary" /> Top Programs & Courses Breakdown
+                    </h4>
+                    {analytics.top_courses.length === 0 ? (
+                      <p className="text-xs text-muted-foreground py-12 text-center">No course distribution recorded yet.</p>
+                    ) : (
+                      <div className="h-[260px] w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Tooltip
+                              contentStyle={{ backgroundColor: "rgba(15, 23, 42, 0.9)", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.1)", fontSize: "12px", color: "#fff" }}
+                              formatter={(value: any) => [`${value} Members`, "Count"]}
+                            />
+                            <Pie
+                              data={analytics.top_courses}
+                              dataKey="count"
+                              nameKey="course"
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={60}
+                              outerRadius={90}
+                              paddingAngle={4}
+                              label={({ course }) => (course.length > 18 ? `${course.substring(0, 16)}...` : course)}
+                            >
+                              {analytics.top_courses.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                              ))}
+                            </Pie>
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Platform Summary Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="glass-card rounded-2xl p-5">
+                    <h5 className="font-heading font-semibold text-sm text-foreground mb-3 flex items-center gap-2">
+                      <Briefcase className="w-4 h-4 text-emerald-600" /> Job Board Breakdown
+                    </h5>
+                    <div className="space-y-2.5">
+                      {analytics.job_types.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">No job listings currently posted.</p>
+                      ) : (
+                        analytics.job_types.map((j) => (
+                          <div key={j.job_type} className="flex justify-between items-center text-xs p-2 rounded-lg bg-muted/30">
+                            <span className="font-medium capitalize">{j.job_type || 'Unspecified'}</span>
+                            <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-semibold">{j.count} posts</span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="glass-card rounded-2xl p-5">
+                    <h5 className="font-heading font-semibold text-sm text-foreground mb-3 flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-primary" /> Application Review Pipeline
+                    </h5>
+                    <div className="space-y-2 text-xs">
+                      <div className="flex justify-between items-center p-2 rounded-lg bg-emerald-50 text-emerald-900">
+                        <span>Approved Alumni</span>
+                        <span className="font-bold">{analytics.registration_status.approved}</span>
+                      </div>
+                      <div className="flex justify-between items-center p-2 rounded-lg bg-amber-50 text-amber-900">
+                        <span>Pending Signups</span>
+                        <span className="font-bold">{analytics.registration_status.pending}</span>
+                      </div>
+                      <div className="flex justify-between items-center p-2 rounded-lg bg-rose-50 text-rose-900">
+                        <span>Rejected Applications</span>
+                        <span className="font-bold">{analytics.registration_status.rejected}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="glass-card rounded-2xl p-5">
+                    <h5 className="font-heading font-semibold text-sm text-foreground mb-3 flex items-center gap-2">
+                      <Shield className="w-4 h-4 text-primary" /> Administration & Security
+                    </h5>
+                    <div className="space-y-2 text-xs text-muted-foreground">
+                      <p className="flex justify-between p-2 rounded-lg bg-muted/30">
+                        <span>Active Admins</span>
+                        <span className="font-bold text-foreground">{analytics.summary.admin_count}</span>
+                      </p>
+                      <p className="flex justify-between p-2 rounded-lg bg-muted/30">
+                        <span>Total Communities</span>
+                        <span className="font-bold text-foreground">{analytics.summary.total_communities}</span>
+                      </p>
+                      <p className="flex justify-between p-2 rounded-lg bg-muted/30">
+                        <span>Total Discussions & Posts</span>
+                        <span className="font-bold text-foreground">{analytics.summary.total_posts}</span>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ── Health Report & User Activity Tab ────────── */}
+        {tab === "health" && (
+          <div className="space-y-6 animate-fade-up">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-heading font-bold text-xl text-foreground">System Diagnostics & API Health</h3>
+                <p className="text-xs text-muted-foreground">Real-time status of backend microservices, database performance, and user activity audit</p>
+              </div>
+              <button
+                onClick={handleRefreshHealth}
+                disabled={isRefreshingHealth || loadingHealth}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold border border-border bg-card hover:bg-muted/60 transition-all shadow-sm active:scale-95"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 text-primary ${isRefreshingHealth ? "animate-spin" : ""}`} />
+                {isRefreshingHealth ? "Running Diagnostics..." : "Run Health Check"}
+              </button>
+            </div>
+
+            {loadingHealth ? (
+              <div className="glass-card rounded-2xl p-12 text-center text-sm text-muted-foreground">
+                Running live diagnostics across all endpoints...
+              </div>
+            ) : !healthReport ? (
+              <div className="glass-card rounded-2xl p-12 text-center text-sm text-muted-foreground">
+                Unable to retrieve health report.
+              </div>
+            ) : (
+              <>
+                {/* System Overview Banner Card */}
+                <div className="glass-card rounded-2xl p-6 bg-gradient-to-r from-emerald-500/10 via-background to-primary/10 border border-emerald-500/20">
+                  <div className="flex flex-wrap items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 flex items-center justify-center">
+                        <Server className="w-6 h-6 text-emerald-600" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-heading font-bold text-lg text-foreground">GEU Alumni Backend Engine</span>
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-700">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                            {healthReport.system_health.status}
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Node {healthReport.system_health.environment.node_version} • {healthReport.system_health.environment.env.toUpperCase()} mode • Email Engine: {healthReport.system_health.environment.email_delivery_mode.toUpperCase()}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-6 text-sm">
+                      <div className="text-center">
+                        <p className="text-xs text-muted-foreground">DB Latency</p>
+                        <p className="font-heading font-bold text-emerald-600">{healthReport.system_health.db_latency_ms} ms</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-xs text-muted-foreground">Server Uptime</p>
+                        <p className="font-heading font-bold text-foreground">
+                          {Math.floor(healthReport.system_health.uptime_seconds / 3600)}h {Math.floor((healthReport.system_health.uptime_seconds % 3600) / 60)}m
+                        </p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-xs text-muted-foreground">Heap Used</p>
+                        <p className="font-heading font-bold text-foreground">
+                          {healthReport.system_health.memory_usage.heap_used_mb} MB / {healthReport.system_health.memory_usage.heap_total_mb} MB
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* API Endpoints Live Health Grid */}
+                <div>
+                  <h4 className="font-heading font-semibold text-foreground flex items-center gap-2 mb-3">
+                    <Wifi className="w-4 h-4 text-primary" /> API Microservices Real-Time Latency
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                    {healthReport.api_endpoints_status.map((ep) => (
+                      <div key={ep.name} className="glass-card rounded-xl p-4 flex items-center justify-between">
+                        <div>
+                          <p className="text-xs font-semibold text-foreground">{ep.name}</p>
+                          <span className="inline-flex items-center gap-1 mt-1 text-[11px] font-medium text-emerald-600">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                            {ep.status}
+                          </span>
+                        </div>
+                        <span className="text-xs font-mono font-bold px-2 py-1 rounded-lg bg-muted/50 text-foreground">
+                          {ep.latency_ms} ms
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* User Activity & Audit Table */}
+                <div className="glass-card rounded-2xl p-6">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+                    <div>
+                      <h4 className="font-heading font-semibold text-foreground flex items-center gap-2">
+                        <Users className="w-4 h-4 text-primary" /> Live User Directory & Activity Log
+                      </h4>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Monitoring presence, roles, and academic profiles of up to 100 recent users
+                      </p>
+                    </div>
+                    <div className="relative w-full md:w-64">
+                      <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                      <input type="text" value={activitySearch} onChange={(e) => setActivitySearch(e.target.value)}
+                        placeholder="Search users..."
+                        className="w-full pl-9 pr-3.5 py-1.5 rounded-xl border border-input bg-background text-xs focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-border text-xs text-muted-foreground font-medium">
+                          <th className="py-3 px-3">Status</th>
+                          <th className="py-3 px-3">Alumnus Name & Email</th>
+                          <th className="py-3 px-3">Academic Program</th>
+                          <th className="py-3 px-3">Role</th>
+                          <th className="py-3 px-3">IP Address</th>
+                          <th className="py-3 px-3">Last Active</th>
+                          <th className="py-3 px-3">Registered</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border text-xs">
+                        {healthReport.user_activity_log
+                          .filter(u =>
+                            u.full_name.toLowerCase().includes(activitySearch.toLowerCase()) ||
+                            u.email.toLowerCase().includes(activitySearch.toLowerCase()) ||
+                            u.course.toLowerCase().includes(activitySearch.toLowerCase()) ||
+                            (u.ip_address && u.ip_address.toLowerCase().includes(activitySearch.toLowerCase()))
+                          )
+                          .map(u => (
+                            <tr key={u.id} className="hover:bg-muted/30 transition-colors">
+                              <td className="py-3 px-3">
+                                {u.is_online ? (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/15 text-emerald-700">
+                                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> Online
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-muted text-muted-foreground">
+                                    <span className="w-2 h-2 rounded-full bg-muted-foreground/40" /> Offline
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-3 px-3">
+                                <p className="font-semibold text-foreground">{u.full_name}</p>
+                                <p className="text-[11px] text-muted-foreground">{u.email}</p>
+                              </td>
+                              <td className="py-3 px-3">
+                                <p className="font-medium text-foreground">{u.course}</p>
+                                <p className="text-[11px] text-muted-foreground">Class of {u.graduation_year || 'N/A'}</p>
+                              </td>
+                              <td className="py-3 px-3">
+                                {u.is_super_admin ? (
+                                  <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 font-semibold text-[11px]">
+                                    Super Admin
+                                  </span>
+                                ) : u.is_admin ? (
+                                  <span className="px-2 py-0.5 rounded-full bg-primary/15 text-primary font-semibold text-[11px]">
+                                    Admin
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded-full bg-muted text-muted-foreground text-[11px]">
+                                    Member
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-3 px-3">
+                                <span className="font-mono text-[11px] px-2 py-1 rounded-md bg-muted/60 text-foreground">
+                                  {u.ip_address || '127.0.0.1 (Local)'}
+                                </span>
+                              </td>
+                              <td className="py-3 px-3 text-muted-foreground">
+                                {u.last_seen ? formatDistanceToNow(new Date(u.last_seen), { addSuffix: true }) : 'Never'}
+                              </td>
+                              <td className="py-3 px-3 text-muted-foreground">
+                                {new Date(u.created_at).toLocaleDateString()}
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
         )}
 
         {/* ── Reject modal ─────────────────────────────── */}
