@@ -16,8 +16,17 @@ types.setTypeParser(1114, (str) => (str ? new Date(str.replace(' ', 'T') + 'Z') 
 // returns a proper Date.
 types.setTypeParser(1184, (str) => (str ? new Date(str) : null));
 
+const isRemoteDb = process.env.DATABASE_URL && (
+  process.env.DATABASE_URL.includes('neon.tech') ||
+  process.env.DATABASE_URL.includes('supabase.co') ||
+  process.env.DATABASE_URL.includes('render.com') ||
+  process.env.DATABASE_URL.includes('sslmode=require') ||
+  process.env.NODE_ENV === 'production'
+);
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
+  ssl: isRemoteDb ? { rejectUnauthorized: false } : false,
 });
 
 pool.on('connect', () => {

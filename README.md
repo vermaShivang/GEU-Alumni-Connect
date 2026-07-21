@@ -237,7 +237,10 @@ GEU Alumni Connect is pre-configured for one-click cloud deployment on [Render.c
 - Includes pre-built Single-Page Application (SPA) rewrite rules (`/*` ➔ `/index.html`).
 - For complete, step-by-step instructions on deploying to Render in under 5 minutes and running the initial super-admin setup, read **[`RENDER_DEPLOYMENT.md`](./RENDER_DEPLOYMENT.md)**.
 
----
-
 ## 8. Detailed Setup Guide
 For complete step-by-step instructions on configuring production deployments, Gmail SMTP App Passwords, and operational architecture, refer to **[`SETUP_GUIDE.md`](./SETUP_GUIDE.md)**.
+
+---
+
+## 9. Enterprise Security & Encryption Architecture
+GEU Alumni Connect enforces strict data encryption in transit (TLS/SSL) and at rest (`bcryptjs`), complete protection against XSS/Clickjacking (`helmet`), brute-force/DoS mitigation (`express-rate-limit`), HTTP parameter pollution checks (`hpp`), and 100% parameterized SQL query execution. For a full breakdown of all security controls and threat defenses, refer to **[`SECURITY.md`](./SECURITY.md)**.
