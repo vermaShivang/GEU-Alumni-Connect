@@ -231,7 +231,13 @@ npm run dev
 ```
 Frontend opens on **http://localhost:8080**. Log in with `admin` / `Admin@12345` to access the Admin Panel, sign-up review queue, Platform Analytics, and System Health Diagnostics!
 
+## 7. Cloud Deployment on Render (`render.yaml`)
+GEU Alumni Connect is pre-configured for one-click cloud deployment on [Render.com](https://render.com) using our included **`render.yaml` Blueprint** specification:
+- Automatically provisions the **Node.js Express Backend Service** and **React Static Site**.
+- Includes pre-built Single-Page Application (SPA) rewrite rules (`/*` ➔ `/index.html`).
+- For complete, step-by-step instructions on deploying to Render in under 5 minutes and running the initial super-admin setup, read **[`RENDER_DEPLOYMENT.md`](./RENDER_DEPLOYMENT.md)**.
+
 ---
 
-## 7. Detailed Setup Guide
+## 8. Detailed Setup Guide
 For complete step-by-step instructions on configuring production deployments, Gmail SMTP App Passwords, and operational architecture, refer to **[`SETUP_GUIDE.md`](./SETUP_GUIDE.md)**.
