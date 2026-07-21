@@ -43,8 +43,6 @@ services:
   - type: web
     name: geu-alumni-frontend
     env: static
-    region: oregon
-    plan: free
     rootDir: Frontend
     buildCommand: npm install && npm run build
     staticPublishPath: dist
